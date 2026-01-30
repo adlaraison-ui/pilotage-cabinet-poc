@@ -1,0 +1,6 @@
+entry_date,username,mission_code,category,hours,description
+2026-01-20,consult1,M-2026-001,billable,8,Delivery
+2026-01-21,consult1,M-2026-001,billable,4,Workshop
+2026-01-21,consult1,,internal,4,R&D
+2026-01-21,consult2,M-2026-001,non_billable_client,4,Overrun
+2026-01-22,consult2,M-2026-002,billable,8,Implementation

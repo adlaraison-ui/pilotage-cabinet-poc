@@ -1,0 +1,2 @@
+- `app.db` est créé automatiquement au premier lancement.
+- Les CSV de démo sont dans `data/sample/`.

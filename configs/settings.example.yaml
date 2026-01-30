@@ -1,0 +1,8 @@
+time:
+  day_hours: 8
+ui:
+  default_view: week
+security:
+  bcrypt_rounds: 12
+import:
+  csv_encoding: "utf-8"

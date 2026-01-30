@@ -1,0 +1,4 @@
+mission_code,username,start_date,end_date,allocation_pct
+M-2026-001,consult1,2026-01-01,2026-03-31,80
+M-2026-001,consult2,2026-01-10,2026-03-31,50
+M-2026-002,consult2,2026-01-15,2026-02-28,50

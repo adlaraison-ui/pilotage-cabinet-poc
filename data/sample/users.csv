@@ -1,0 +1,6 @@
+username,full_name,email,role,is_active,password_clear
+admin,Admin,admin@local,ADMIN,1,admin123
+board1,Board Member,board@local,BOARD,1,board123
+lead1,Lead Mission,lead@local,LEAD,1,lead123
+consult1,Consultant One,c1@local,CONSULTANT,1,cons123
+consult2,Consultant Two,c2@local,CONSULTANT,1,cons123

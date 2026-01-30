@@ -1,0 +1,5 @@
+streamlit==1.37.1
+pandas==2.2.2
+PyYAML==6.0.2
+python-dotenv==1.0.1
+bcrypt==4.2.0

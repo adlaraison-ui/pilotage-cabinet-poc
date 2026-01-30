@@ -1,0 +1,45 @@
+# ======================
+# Python / Virtual env
+# ======================
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+.env
+
+# ======================
+# Streamlit
+# ======================
+.streamlit/secrets.toml
+
+# ======================
+# Runtime / logs
+# ======================
+*.log
+runtime/
+tmp/
+
+# ======================
+# Database (SQLite)
+# ======================
+data/app.db
+data/*.db
+data/*.sqlite
+data/*.sqlite3
+
+# ======================
+# Exports / imports générés
+# ======================
+exports/
+imports/
+*.xlsx
+
+# ======================
+# OS / IDE
+# ======================
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
