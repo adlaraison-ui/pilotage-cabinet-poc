@@ -665,7 +665,6 @@ def section_simulation_board(conn):
         return dict(r) if r else None
 
     def _save_simulation_header(sim_id, payload: dict) -> int:
-        # payload keys: mission_id, client_name, project_name, sector, start_date, end_date, status, notes
         if sim_id is None:
             cur = conn.execute(
                 """
@@ -686,36 +685,45 @@ def section_simulation_board(conn):
                     payload.get("notes"),
                 ),
             )
+            conn.commit()  # ✅ IMPORTANT
             return int(cur.lastrowid)
-        else:
-            conn.execute(
-                """
-                UPDATE simulations
-                SET mission_id=?, client_name=?, project_name=?, sector=?,
-                    start_date=?, end_date=?, status=?, notes=?
-                WHERE id=?
-                """,
-                (
-                    payload.get("mission_id"),
-                    payload["client_name"],
-                    payload["project_name"],
-                    payload.get("sector"),
-                    payload.get("start_date"),
-                    payload.get("end_date"),
-                    payload.get("status", "draft"),
-                    payload.get("notes"),
-                    int(sim_id),
-                ),
-            )
-            return int(sim_id)
 
-    def _overwrite_lines(
-        sim_id: int,
-        table: str,
-        df_lines: pd.DataFrame,
-        cols: list[str],
-        defaults: dict[str, object] | None = None,
-    ) -> None:
+        conn.execute(
+            """
+            UPDATE simulations
+            SET mission_id=?, client_name=?, project_name=?, sector=?,
+                start_date=?, end_date=?, status=?, notes=?
+            WHERE id=?
+            """,
+            (
+                payload.get("mission_id"),
+                payload["client_name"],
+                payload["project_name"],
+                payload.get("sector"),
+                payload.get("start_date"),
+                payload.get("end_date"),
+                payload.get("status", "draft"),
+                payload.get("notes"),
+                int(sim_id),
+            ),
+        )
+        conn.commit()  # ✅ IMPORTANT
+        return int(sim_id)
+
+    def _overwrite_lines(sim_id: int, table: str, df_lines: pd.DataFrame, cols: list[str], defaults=None):
+        if sim_id is None:
+            st.error("Simulation introuvable en base. Enregistre d’abord l’en-tête (Client/Projet), puis réessaie.")
+            return
+
+        exists = conn.execute(
+            "SELECT 1 FROM simulations WHERE id=?",
+            (int(sim_id),),
+        ).fetchone()
+
+        if not exists:
+            st.error("Simulation introuvable en base (ID invalide). Recharge la page et réessaie.")
+            return
+
         """
         POC simple : on remplace tout (delete + insert)
         + sécurisation NOT NULL / CHECK via defaults
@@ -854,19 +862,31 @@ def section_simulation_board(conn):
     with st.form("sim_header_form", clear_on_submit=False):
         c1, c2, c3 = st.columns(3)
         with c1:
-            mission_pick = st.selectbox("Lier à une mission", mission_labels, index=mission_labels.index(default_label))
+            mission_pick = st.selectbox(
+                "Lier à une mission",
+                mission_labels,
+                index=mission_labels.index(default_label),
+            )
             status_val = st.selectbox(
                 "Statut",
                 ["draft", "validated", "archived"],
                 index=(["draft", "validated", "archived"].index(sim["status"]) if sim else 0),
             )
+
         with c2:
             client_name = st.text_input("Client (texte)", value=(sim["client_name"] if sim else ""))
             project_name = st.text_input("Projet", value=(sim["project_name"] if sim else ""))
             sector = st.text_input("Secteur (optionnel)", value=(sim.get("sector") if sim else ""))
+
         with c3:
-            start_date = st.text_input("Date début (YYYY-MM-DD, optionnel)", value=(sim.get("start_date") or "" if sim else ""))
-            end_date = st.text_input("Date fin (YYYY-MM-DD, optionnel)", value=(sim.get("end_date") or "" if sim else ""))
+            start_date = st.text_input(
+                "Date début (YYYY-MM-DD, optionnel)",
+                value=(sim.get("start_date") or "" if sim else ""),
+            )
+            end_date = st.text_input(
+                "Date fin (YYYY-MM-DD, optionnel)",
+                value=(sim.get("end_date") or "" if sim else ""),
+            )
             notes = st.text_area("Notes (optionnel)", value=(sim.get("notes") or "" if sim else ""), height=90)
 
         save_header = st.form_submit_button("💾 Enregistrer en-tête", use_container_width=True)
@@ -884,10 +904,15 @@ def section_simulation_board(conn):
                 "start_date": start_date.strip() if start_date.strip() else None,
                 "end_date": end_date.strip() if end_date.strip() else None,
                 "status": status_val,
-                "notes": notes.strip() if notes.strip() else None,
+                "notes": notes.strip() if notes and notes.strip() else None,
             }
+
             new_id = _save_simulation_header(sim_id, payload)
-            st.session_state["sim_selected_id"] = new_id
+
+            # Important : caster + fixer l'état
+            st.session_state["sim_selected_id"] = int(new_id)
+            st.session_state["sim_mode"] = "edit"
+
             st.success(f"En-tête enregistré (simulation #{new_id}).")
             st.rerun()
 
@@ -915,6 +940,11 @@ def section_simulation_board(conn):
         k5.metric("Heures prévues (billable)", f"{float(s.get('billable_hours') or 0):.0f} h")
 
     st.divider()
+    sim_id = st.session_state.get("sim_selected_id")
+
+    if sim_id is None:
+        st.warning("Enregistre d’abord l’en-tête de la simulation avant d’ajouter des lignes.")
+        return
 
     # ---- Lines editors (3 blocs)
     st.markdown("### Ressources internes")

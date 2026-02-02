@@ -1,9 +1,3 @@
-
----
-
-# 📄 ARCHITECTURE.md
-
-```md
 # Architecture — V1
 
 ## Vue d’ensemble
@@ -33,3 +27,27 @@ Chatbot → lecture des vues KPI uniquement
 - Micro-services
 - ORM complexe
 - Auth externe
+
+# Roadmap
+
+## Scope actuel (V1)
+- Pilotage opérationnel
+- CRA & capacités
+- Chatbot KPI
+- RBAC strict
+
+## Évolutions rapides (V1.1)
+- Pages Streamlit multipages
+- Export PDF / Excel
+- Alertes email internes
+
+## Structurant (V2)
+- LLM local (Ollama)
+- PostgreSQL
+- Planning avancé
+- Validation CRA
+
+## Hors scope
+- SaaS multi-client
+- Facturation
+- Paie
