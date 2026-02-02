@@ -709,59 +709,64 @@ def section_simulation_board(conn):
             )
             return int(sim_id)
 
-    def _overwrite_lines(sim_id: int, table: str, df_lines: pd.DataFrame, cols: list[str], defaults: dict[str, object] | None = None):
-    """
-    POC simple : on remplace tout (delete + insert)
-    + sécurisation NOT NULL / CHECK via defaults
-    """
-    defaults = defaults or {}
+    def _overwrite_lines(
+        sim_id: int,
+        table: str,
+        df_lines: pd.DataFrame,
+        cols: list[str],
+        defaults: dict[str, object] | None = None,
+    ) -> None:
+        """
+        POC simple : on remplace tout (delete + insert)
+        + sécurisation NOT NULL / CHECK via defaults
+        """
+        defaults = defaults or {}
 
-    conn.execute(f"DELETE FROM {table} WHERE simulation_id=?", (int(sim_id),))
+        conn.execute(f"DELETE FROM {table} WHERE simulation_id=?", (int(sim_id),))
 
-    if df_lines is None or df_lines.empty:
+        if df_lines is None or df_lines.empty:
+            conn.commit()
+            return
+
+        clean = df_lines.copy()
+        clean = clean.replace({pd.NA: None})
+        clean = clean.where(pd.notna(clean), None)
+
+        rows = []
+        for _, r in clean.iterrows():
+            values = []
+            all_empty = True
+
+            for c in cols:
+                v = r.get(c)
+
+                # default si vide
+                if v in (None, ""):
+                    v = defaults.get(c, None)
+
+                # normaliser NaN
+                if isinstance(v, float) and pd.isna(v):
+                    v = defaults.get(c, None)
+
+                if v not in (None, "", 0, 0.0):
+                    all_empty = False
+
+                values.append(v)
+
+            if all_empty:
+                continue
+
+            rows.append([sim_id] + values)
+
+        if not rows:
+            conn.commit()
+            return
+
+        placeholders = ",".join(["?"] * (1 + len(cols)))
+        sql = f"INSERT INTO {table}(simulation_id,{','.join(cols)}) VALUES ({placeholders})"
+        conn.executemany(sql, rows)
         conn.commit()
-        return
 
-    clean = df_lines.copy()
-    clean = clean.replace({pd.NA: None})
-    clean = clean.where(pd.notna(clean), None)
-
-    rows = []
-    for _, r in clean.iterrows():
-        # Construire la ligne en appliquant defaults
-        values = []
-        all_empty = True
-
-        for c in cols:
-            v = r.get(c)
-
-            # appliquer default si vide
-            if v in (None, ""):
-                v = defaults.get(c, None)
-
-            # normaliser NaN éventuels
-            if isinstance(v, float) and pd.isna(v):
-                v = defaults.get(c, None)
-
-            # détecter ligne totalement vide (après defaults)
-            if v not in (None, "", 0, 0.0):
-                all_empty = False
-
-            values.append(v)
-
-        if all_empty:
-            continue
-
-        rows.append([sim_id] + values)
-
-    if not rows:
-        conn.commit()
-        return
-
-    placeholders = ",".join(["?"] * (1 + len(cols)))
-    sql = f"INSERT INTO {table}(simulation_id,{','.join(cols)}) VALUES ({placeholders})"
-    conn.executemany(sql, rows)
-    conn.commit()
 
 
     # ---- Liste simulations (résumé via vue KPI)
@@ -1175,7 +1180,7 @@ def main():
     st.set_page_config(page_title="Pilotage Cabinet - POC", layout="wide")
     settings = load_settings()
 
-        # Pré-auth (utile si déployé sur internet)
+    # Pré-auth (utile si déployé sur internet)
     if settings.env != "local":
         access_code = ""
         try:
