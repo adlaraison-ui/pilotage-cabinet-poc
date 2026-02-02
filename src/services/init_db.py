@@ -373,3 +373,67 @@ def ensure_schema(conn: sqlite3.Connection, settings: Settings) -> None:
             "INSERT OR IGNORE INTO app_settings(key, value) VALUES (?, ?)",
             (k, v),
         )
+    ensure_views(conn)
+    conn.commit()
+
+
+def ensure_views(conn: sqlite3.Connection) -> None:
+    # Drop (pour permettre les évolutions)
+    conn.executescript(
+        """
+        DROP VIEW IF EXISTS kpi_alert_capacity_weekly;
+        DROP VIEW IF EXISTS kpi_alert_capacity_daily;
+        DROP VIEW IF EXISTS kpi_capacity_daily;
+        DROP VIEW IF EXISTS kpi_user_logged_daily;
+        """
+    )
+
+    # Recreate
+    conn.executescript(
+        """
+        CREATE VIEW IF NOT EXISTS kpi_user_logged_daily AS
+        SELECT
+          te.entry_date AS day,
+          te.user_id,
+          u.full_name AS user_name,
+          SUM(te.hours) AS logged_hours
+        FROM time_entries te
+        JOIN users u ON u.id = te.user_id
+        GROUP BY te.entry_date, te.user_id, u.full_name;
+
+        CREATE VIEW IF NOT EXISTS kpi_capacity_daily AS
+        SELECT
+          l.day,
+          l.user_id,
+          l.user_name,
+          COALESCE(co.capacity_h, 8) AS capacity_h,
+          COALESCE(l.logged_hours, 0) AS logged_hours,
+          (COALESCE(l.logged_hours, 0) - COALESCE(co.capacity_h, 8)) AS over_h
+        FROM kpi_user_logged_daily l
+        LEFT JOIN capacity_overrides co
+          ON co.user_id = l.user_id AND co.cap_date = l.day;
+
+        CREATE VIEW IF NOT EXISTS kpi_alert_capacity_daily AS
+        SELECT
+          day, user_id, user_name, capacity_h, logged_hours, over_h
+        FROM kpi_capacity_daily
+        WHERE over_h > 0
+        ORDER BY day DESC, over_h DESC;
+
+        CREATE VIEW IF NOT EXISTS kpi_alert_capacity_weekly AS
+        SELECT
+          user_id,
+          user_name,
+          strftime('%Y', day) AS year,
+          strftime('%W', day) AS week,
+          MIN(day) AS week_start_day,
+          MAX(day) AS week_end_day,
+          SUM(capacity_h) AS capacity_h,
+          SUM(logged_hours) AS logged_hours,
+          (SUM(logged_hours) - SUM(capacity_h)) AS over_h
+        FROM kpi_capacity_daily
+        GROUP BY user_id, user_name, year, week
+        HAVING over_h > 0
+        ORDER BY year DESC, week DESC, over_h DESC;
+        """
+    )
