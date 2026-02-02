@@ -461,24 +461,88 @@ def section_capacites(conn):
 def section_alertes(conn):
     st.header("Alertes")
 
+    # périmètres
     mids = _mission_ids_for_user(conn)
-    if not mids:
-        st.info("Aucune mission visible.")
-        return
+    visible_user_ids = _visible_user_ids(conn, mids if mids else [])
 
-    q = f"""
-    SELECT mission_code, mission_name, client_name, sold_hours, consumed_hours, variance_hours, risk_level
-    FROM kpi_alert_missions_risk
-    WHERE mission_id IN ({",".join(["?"]*len(mids))})
-    ORDER BY risk_level DESC, variance_hours DESC
-    """
-    df = df_query(conn, q, tuple(mids))
+    tab_m, tab_c = st.tabs(["Missions", "Capacités"])
 
-    if df.empty:
-        st.success("Aucune alerte sur vos missions.")
-        return
+    # =========================
+    # TAB 1 — Alertes Missions
+    # =========================
+    with tab_m:
+        st.subheader("Alertes missions (vendu vs réalisé)")
 
-    st.dataframe(df, use_container_width=True, hide_index=True)
+        if not mids:
+            st.info("Aucune mission visible.")
+        else:
+            q = f"""
+            SELECT mission_code, mission_name, client_name,
+                   sold_hours, consumed_hours, variance_hours, risk_level
+            FROM kpi_alert_missions_risk
+            WHERE mission_id IN ({",".join(["?"]*len(mids))})
+            ORDER BY
+              CASE risk_level
+                WHEN 'overrun' THEN 3
+                WHEN 'near_limit' THEN 2
+                WHEN 'no_sold_load' THEN 1
+                ELSE 0
+              END DESC,
+              variance_hours DESC
+            """
+            df = df_query(conn, q, tuple(mids))
+
+            if df.empty:
+                st.success("Aucune alerte mission détectée sur votre périmètre.")
+            else:
+                st.dataframe(df, use_container_width=True, hide_index=True)
+
+    # =========================
+    # TAB 2 — Alertes Capacités
+    # =========================
+    with tab_c:
+        st.subheader("Alertes capacités (charge > capacité)")
+
+        if not visible_user_ids:
+            st.info("Aucun utilisateur visible pour les alertes capacité.")
+        else:
+            u_sql = ",".join(["?"] * len(visible_user_ids))
+
+            sub_d, sub_w = st.tabs(["Jour", "Semaine"])
+
+            with sub_d:
+                dfc = df_query(
+                    conn,
+                    f"""
+                    SELECT day, user_name, capacity_h, logged_hours, over_h
+                    FROM kpi_alert_capacity_daily
+                    WHERE user_id IN ({u_sql})
+                    ORDER BY day DESC, over_h DESC
+                    """,
+                    tuple(visible_user_ids),
+                )
+                if dfc.empty:
+                    st.success("Aucune surcapacité journalière détectée.")
+                else:
+                    st.dataframe(dfc, use_container_width=True, hide_index=True)
+
+            with sub_w:
+                dfw = df_query(
+                    conn,
+                    f"""
+                    SELECT year, week, week_start_day, week_end_day,
+                           user_name, capacity_h, logged_hours, over_h
+                    FROM kpi_alert_capacity_weekly
+                    WHERE user_id IN ({u_sql})
+                    ORDER BY year DESC, week DESC, over_h DESC
+                    """,
+                    tuple(visible_user_ids),
+                )
+                if dfw.empty:
+                    st.success("Aucune surcapacité hebdomadaire détectée.")
+                else:
+                    st.dataframe(dfw, use_container_width=True, hide_index=True)
+
 
 
 def section_synthese(conn):
