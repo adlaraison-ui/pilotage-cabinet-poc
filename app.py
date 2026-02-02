@@ -709,31 +709,60 @@ def section_simulation_board(conn):
             )
             return int(sim_id)
 
-    def _overwrite_lines(sim_id: int, table: str, df_lines: pd.DataFrame, cols: list[str]):
-        # POC simple : on remplace tout (delete + insert)
-        conn.execute(f"DELETE FROM {table} WHERE simulation_id=?", (int(sim_id),))
-        if df_lines is None or df_lines.empty:
-            return
+    def _overwrite_lines(sim_id: int, table: str, df_lines: pd.DataFrame, cols: list[str], defaults: dict[str, object] | None = None):
+    """
+    POC simple : on remplace tout (delete + insert)
+    + sécurisation NOT NULL / CHECK via defaults
+    """
+    defaults = defaults or {}
 
-        clean = df_lines.copy()
+    conn.execute(f"DELETE FROM {table} WHERE simulation_id=?", (int(sim_id),))
 
-        # Drop rows fully empty (évite insert de lignes "vides")
-        clean = clean.replace({pd.NA: None})
-        clean = clean.where(pd.notna(clean), None)
+    if df_lines is None or df_lines.empty:
+        conn.commit()
+        return
 
-        rows = []
-        for _, r in clean.iterrows():
-            # ignore empty rows
-            if all((r.get(c) in (None, "", 0, 0.0)) for c in cols):
-                continue
-            rows.append([sim_id] + [r.get(c) for c in cols])
+    clean = df_lines.copy()
+    clean = clean.replace({pd.NA: None})
+    clean = clean.where(pd.notna(clean), None)
 
-        if not rows:
-            return
+    rows = []
+    for _, r in clean.iterrows():
+        # Construire la ligne en appliquant defaults
+        values = []
+        all_empty = True
 
-        placeholders = ",".join(["?"] * (1 + len(cols)))
-        sql = f"INSERT INTO {table}(simulation_id,{','.join(cols)}) VALUES ({placeholders})"
-        conn.executemany(sql, rows)
+        for c in cols:
+            v = r.get(c)
+
+            # appliquer default si vide
+            if v in (None, ""):
+                v = defaults.get(c, None)
+
+            # normaliser NaN éventuels
+            if isinstance(v, float) and pd.isna(v):
+                v = defaults.get(c, None)
+
+            # détecter ligne totalement vide (après defaults)
+            if v not in (None, "", 0, 0.0):
+                all_empty = False
+
+            values.append(v)
+
+        if all_empty:
+            continue
+
+        rows.append([sim_id] + values)
+
+    if not rows:
+        conn.commit()
+        return
+
+    placeholders = ",".join(["?"] * (1 + len(cols)))
+    sql = f"INSERT INTO {table}(simulation_id,{','.join(cols)}) VALUES ({placeholders})"
+    conn.executemany(sql, rows)
+    conn.commit()
+
 
     # ---- Liste simulations (résumé via vue KPI)
     st.subheader("Mes simulations (Board)")
@@ -954,19 +983,41 @@ def section_simulation_board(conn):
                 "simulation_internal_resources",
                 df_int_edit,
                 ["resource_name", "grade", "std_rate_per_hour", "std_cost_per_hour", "planned_days", "hours_per_day", "billable_ratio", "non_billable_hours"],
+                defaults={
+                    "std_rate_per_hour": 0.0,
+                    "std_cost_per_hour": 0.0,
+                    "planned_days": 0.0,
+                    "hours_per_day": 8.0,
+                    "billable_ratio": 1.0,
+                    "non_billable_hours": 0.0,
+                },
             )
+
             _overwrite_lines(
                 int(sim_id),
                 "simulation_external_resources",
                 df_ext_edit,
                 ["provider_name", "role", "buy_rate_per_day", "sell_rate_per_day", "planned_days", "hours_per_day"],
+                defaults={
+                    "buy_rate_per_day": 0.0,
+                    "sell_rate_per_day": 0.0,
+                    "planned_days": 0.0,
+                    "hours_per_day": 8.0,
+                },
             )
+
             _overwrite_lines(
                 int(sim_id),
                 "simulation_costs",
                 df_cost_edit,
                 ["cost_type", "label", "cost_amount", "refactured_amount"],
+                defaults={
+                    "cost_type": "expenses",  # valeur valide du CHECK
+                    "cost_amount": 0.0,
+                    "refactured_amount": 0.0,
+                },
             )
+
             st.success("Lignes enregistrées.")
             st.rerun()
 
