@@ -983,6 +983,12 @@ def section_simulation_board(conn):
     colS1, colS2 = st.columns([1, 1])
     with colS1:
         if st.button("💾 Enregistrer lignes", use_container_width=True, type="primary", key=f"btn_save_lines_{sim_id}"):
+            # Garde-fou FK : la simulation doit exister
+            exists = conn.execute("SELECT 1 FROM simulations WHERE id=?", (int(sim_id),)).fetchone()
+            if not exists:
+                st.error("Simulation introuvable en base. Enregistre d’abord l’en-tête (Client/Projet), puis réessaie.")
+                st.stop()
+
             _overwrite_lines(
                 int(sim_id),
                 "simulation_internal_resources",
