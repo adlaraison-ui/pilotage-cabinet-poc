@@ -548,9 +548,11 @@ def section_synthese(conn):
     ctx = ChatContext(
         role=role(),
         user_id=st.session_state["user"]["id"],
+        username=st.session_state["user"]["username"],
         mission_ids=mids,
         visible_user_ids=visible_user_ids,
     )
+
 
     # UI
     examples = [

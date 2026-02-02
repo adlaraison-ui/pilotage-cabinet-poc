@@ -170,6 +170,33 @@ CREATE TABLE IF NOT EXISTS simulation_costs (
 
 CREATE INDEX IF NOT EXISTS ix_sim_costs_sim ON simulation_costs(simulation_id);
 
+-- =========================
+-- Chat audit (read-only chatbot tracing)
+-- =========================
+CREATE TABLE IF NOT EXISTS chat_audit (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+
+  user_id INTEGER NOT NULL,
+  username TEXT NOT NULL,
+  role TEXT NOT NULL,
+
+  question TEXT NOT NULL,
+  intent TEXT NOT NULL,
+
+  mission_id INTEGER NULL,
+  asked_finance INTEGER NOT NULL DEFAULT 0,
+  finance_allowed INTEGER NOT NULL DEFAULT 0,
+
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (mission_id) REFERENCES missions(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS ix_chat_audit_created_at ON chat_audit(created_at);
+CREATE INDEX IF NOT EXISTS ix_chat_audit_user ON chat_audit(user_id);
+CREATE INDEX IF NOT EXISTS ix_chat_audit_intent ON chat_audit(intent);
+CREATE INDEX IF NOT EXISTS ix_chat_audit_mission ON chat_audit(mission_id);
+
 -- Views KPI
 CREATE VIEW IF NOT EXISTS kpi_mission_hours AS
 SELECT

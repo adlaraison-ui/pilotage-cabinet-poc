@@ -12,6 +12,7 @@ import pandas as pd
 class ChatContext:
     role: str
     user_id: int
+    username: str
     mission_ids: List[int]
     visible_user_ids: List[int]  # pour les questions de charge
 
@@ -193,6 +194,34 @@ def _answer_mission_status(conn, ctx, mission: dict) -> dict:
 
     return {"text": text, "tables": tables}
 
+def log_chat_audit(
+    conn: sqlite3.Connection,
+    *,
+    user_id: int,
+    username: str,
+    role: str,
+    question: str,
+    intent: str,
+    mission_id: Optional[int],
+    asked_finance: bool,
+    finance_allowed: bool,
+) -> None:
+    conn.execute(
+        """
+        INSERT INTO chat_audit(user_id, username, role, question, intent, mission_id, asked_finance, finance_allowed)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            int(user_id),
+            str(username),
+            str(role),
+            str(question or ""),
+            str(intent),
+            (int(mission_id) if mission_id is not None else None),
+            1 if asked_finance else 0,
+            1 if finance_allowed else 0,
+        ),
+    )
 
 def answer_question(conn: sqlite3.Connection, ctx: ChatContext, question: str) -> Dict[str, Any]:
     """
@@ -203,11 +232,34 @@ def answer_question(conn: sqlite3.Connection, ctx: ChatContext, question: str) -
       }
     Strictement READ-ONLY : aucune écriture DB.
     """
-    q = _sanitize_question(question)
+    raw_q = question or ""
+    q = _sanitize_question(raw_q)
     intent = _intent(q)
 
+    # Detect mission focus (avant réponses)
+    mission_id: Optional[int] = None
+    m = _find_mission_by_name_or_code(conn, ctx.mission_ids, raw_q)
+    if m is not None:
+        mission_id = int(m["id"])
+
+    asked_finance = intent == "finance_summary"
+    finance_allowed = ctx.role in ("BOARD", "ADMIN")
+
+    # Log (une fois, pour toute question)
+    # NB: c'est la SEULE écriture DB du module, volontaire pour l'audit.
+    log_chat_audit(
+        conn,
+        user_id=ctx.user_id,
+        username=ctx.username,
+        role=ctx.role,
+        question=raw_q,
+        intent=("mission_focus" if mission_id is not None else intent),
+        mission_id=mission_id,
+        asked_finance=asked_finance,
+        finance_allowed=finance_allowed,
+    )
+
     # 0) Focus mission si la question cible une mission visible
-    m = _find_mission_by_name_or_code(conn, ctx.mission_ids, question or "")
     if m is not None:
         return _answer_mission_status(conn, ctx, m)
 
